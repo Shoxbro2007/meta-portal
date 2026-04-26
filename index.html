@@ -2,114 +2,42 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meta Portal 2.0 - Живой Холст</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Meta Portal 2.0 | Flow</title>
     <link rel="stylesheet" href="style.css">
 </head>
-<body class="dark-theme">
-    <div id="app">
-        <!-- Модальное окно входа -->
-        <div id="login-modal" class="modal">
-            <div class="modal-content glass-panel">
-                <h1>🚀 Meta Portal 2.0</h1>
-                <p class="subtitle">Живой Холст • Эмоции • Дзен • Голос</p>
-                
-                <form id="login-form">
-                    <div class="form-group">
-                        <label for="username">Ваше имя</label>
-                        <input type="text" id="username" placeholder="Введите имя..." required maxlength="20">
-                    </div>
-                    
-                    <div class="form-group">
-                        <label>Выберите аватар</label>
-                        <div id="avatar-options" class="avatar-grid"></div>
-                    </div>
-                    
-                    <div class="form-group">
-                        <label for="color-picker">Ваш цвет</label>
-                        <input type="color" id="color-picker" value="#3498db">
-                    </div>
-                    
-                    <button type="submit" class="btn-primary btn-glow">
-                        Войти в поток ✨
-                    </button>
-                </form>
-            </div>
+<body>
+    <div class="ambient-bg"></div>
+
+    <header class="top-bar">
+        <div class="logo">META PORTAL <span class="badge">2.0</span></div>
+        <div class="controls">
+            <button id="zenModeBtn" class="icon-btn" title="Режим Дзен">🧘</button>
+            <button id="themeBtn" class="icon-btn" title="Тема">🌓</button>
+            <div class="user-score">✨ <span id="scoreVal">0</span></div>
         </div>
+    </header>
 
-        <!-- Основной интерфейс чата -->
-        <div id="chat-container" style="display: none;">
-            <!-- Верхняя панель -->
-            <header class="top-bar glass-panel">
-                <div class="logo">🌀 Meta Portal</div>
-                <div class="status-bar">
-                    <span id="score-display" class="score">⚡ 0</span>
-                    <span id="user-count" class="users">👥 1</span>
-                    <button id="mode-toggle" class="btn-icon" title="Режим Дзен">🧘 Режим Дзен</button>
-                    <button id="theme-toggle" class="btn-icon" title="Сменить тему">🌓</button>
-                    <button id="settings-btn" class="btn-icon" title="Настройки">⚙️</button>
-                </div>
-            </header>
-
-            <!-- Холст с сообщениями -->
-            <div id="canvas" class="spatial-canvas"></div>
-
-            <!-- Панель управления -->
-            <footer class="control-panel glass-panel">
-                <div class="input-wrapper">
-                    <button id="voice-btn" class="btn-voice" title="Голосовое сообщение">
-                        🎤
-                    </button>
-                    <div id="voice-visualizer" class="voice-visualizer" style="display: none;">
-                        <div class="wave-bar"></div>
-                        <div class="wave-bar"></div>
-                        <div class="wave-bar"></div>
-                        <div class="wave-bar"></div>
-                        <div class="wave-bar"></div>
-                    </div>
-                    <input type="text" id="chat-input" placeholder="Отправьте сообщение в поток..." autocomplete="off">
-                    <button id="send-btn" class="btn-send">➤</button>
-                </div>
-            </footer>
+    <main id="chatCanvas" class="chat-canvas">
+        <div class="empty-state" id="emptyState">
+            <h2>Поток сознания</h2>
+            <p>Напиши что-нибудь, чтобы запустить волну...</p>
         </div>
+    </main>
 
-        <!-- Панель настроек -->
-        <div id="settings-panel" class="settings-panel glass-panel">
-            <div class="settings-header">
-                <h2>⚙️ Настройки</h2>
-                <button class="close-settings">×</button>
-            </div>
-            
-            <div class="settings-content">
-                <div class="setting-item">
-                    <label>Скорость дрейфа</label>
-                    <input type="range" id="drift-speed" min="0" max="5" step="0.5" value="1">
-                    <span class="value-display">1x</span>
-                </div>
-                
-                <div class="setting-item">
-                    <label>Режим</label>
-                    <select id="mode-select">
-                        <option value="chat">Обычный чат</option>
-                        <option value="zen">Режим Дзен</option>
-                    </select>
-                </div>
-                
-                <div class="setting-info">
-                    <p>💡 Советы:</p>
-                    <ul>
-                        <li>Кликните на сообщение, чтобы сфокусироваться</li>
-                        <li>Радостные сообщения всплывают вверх</li>
-                        <li>Грустные опускаются вниз</li>
-                        <li>Зажмите 🎤 для голосового</li>
-                    </ul>
-                </div>
-            </div>
+    <footer class="input-dock">
+        <div class="input-wrapper">
+            <button id="voiceBtn" class="action-btn voice">🎤</button>
+            <input type="text" id="msgInput" placeholder="Мысль вслух..." autocomplete="off">
+            <button id="sendBtn" class="action-btn send">➤</button>
         </div>
+        <div id="voiceVisualizer" class="hidden">
+            <div class="bar"></div><div class="bar"></div><div class="bar"></div>
+            <span>Запись... (отпустите для отправки)</span>
+        </div>
+    </footer>
 
-        <!-- Уведомления -->
-        <div id="notifications" class="notifications-container"></div>
-    </div>
+    <div id="toastContainer"></div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script src="main.js"></script>
