@@ -1,139 +1,94 @@
-// Meta Portal - Complete WebSocket Server
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Serve static files
+const PORT = process.env.PORT || 3000;
+
+// Хранилище данных
+const messageHistory = []; // Последние 100 сообщений
+const users = new Map(); // Активные пользователи
+
+// Раздача статических файлов
 app.use(express.static(path.join(__dirname)));
 
-// Serve index.html for root route
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-// In-memory storage
-let users = new Map(); // socket.id -> user data
-let chatHistory = [];
-const MAX_HISTORY = 50;
-
+// Обработка подключения Socket.IO
 io.on('connection', (socket) => {
-    console.log('User connected:', socket.id);
-    
-    // Initialize user data
-    users.set(socket.id, {
-        id: socket.id,
-        username: 'Аноним',
-        avatar: '👤',
-        joinedAt: new Date().toISOString()
+    console.log(`Новое подключение: ${socket.id}`);
+
+    // Отправляем историю при подключении
+    socket.emit('chat_history', messageHistory);
+
+    // Обработка входа пользователя
+    socket.on('join', (data) => {
+        const username = data.username || 'Аноним';
+        users.set(socket.id, { id: socket.id, username, joinedAt: Date.now() });
+        
+        console.log(`${username} присоединился`);
+        
+        // Уведомляем остальных
+        socket.broadcast.emit('user_joined', {
+            username: username,
+            userId: socket.id
+        });
     });
 
-    // Send chat history to new user
-    socket.emit('chat-history', chatHistory);
-    
-    // Broadcast updated online count
-    broadcastOnlineCount();
-
-    // Notify others about new user
-    const userData = users.get(socket.id);
-    socket.broadcast.emit('user-joined', {
-        username: userData.username,
-        userId: socket.id
-    });
-
-    // Handle user info update
-    socket.on('user-info', (data) => {
+    // Обработка сообщения чата
+    socket.on('chat_message', (data) => {
         const user = users.get(socket.id);
-        if (user) {
-            user.username = data.username || 'Аноним';
-            user.avatar = data.avatar || '👤';
-            users.set(socket.id, user);
-            console.log(`User ${socket.id} updated info:`, user.username);
-        }
-    });
-
-    // Handle chat messages
-    socket.on('chat-message', (msg) => {
-        const user = users.get(socket.id);
-        const messageData = {
-            id: Date.now(),
-            username: user ? user.username : 'Аноним',
-            avatar: user ? user.avatar : '👤',
-            text: msg.text || msg,
-            timestamp: new Date().toISOString(),
-            userId: socket.id,
-            own: msg.own || false
+        const username = user ? user.username : 'Аноним';
+        
+        const message = {
+            id: Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9),
+            username: username,
+            text: data.text,
+            timestamp: data.timestamp || Date.now(),
+            userId: socket.id
         };
 
-        // Add to history
-        chatHistory.push(messageData);
-        if (chatHistory.length > MAX_HISTORY) {
-            chatHistory.shift();
+        // Добавляем в историю
+        messageHistory.push(message);
+        
+        // Ограничиваем историю 100 сообщениями
+        if (messageHistory.length > 100) {
+            messageHistory.shift();
         }
 
-        // Broadcast to all clients
-        io.emit('chat-message', messageData);
-        console.log(`Message from ${messageData.username}:`, messageData.text);
+        // Рассылаем всем подключенным
+        io.emit('new_message', message);
     });
 
-    // Handle disconnect
+    // Изменение имени пользователя
+    socket.on('username_change', (newUsername) => {
+        const user = users.get(socket.id);
+        if (user) {
+            user.username = newUsername;
+            users.set(socket.id, user);
+            console.log(`${socket.id} сменил имя на ${newUsername}`);
+        }
+    });
+
+    // Обработка отключения
     socket.on('disconnect', () => {
         const user = users.get(socket.id);
-        console.log('User disconnected:', socket.id);
-        
         if (user) {
             users.delete(socket.id);
-            socket.broadcast.emit('user-left', {
+            console.log(`${user.username} отключился`);
+            
+            io.emit('user_left', {
                 username: user.username,
                 userId: socket.id
             });
         }
-        
-        broadcastOnlineCount();
     });
 });
 
-// Broadcast online user count
-function broadcastOnlineCount() {
-    const count = users.size;
-    io.emit('online-count', count);
-}
-
-// Error handling
-process.on('uncaughtException', (err) => {
-    console.error('Uncaught Exception:', err);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-// Start server
-const PORT = process.env.PORT || 3000;
+// Запуск сервера
 server.listen(PORT, () => {
-    console.log(`
-╔═══════════════════════════════════════════════╗
-║     🌐 Meta Portal Server Started!           ║
-║                                               ║
-║     URL: http://localhost:${PORT}              ║
-║     Status: Online ✅                         ║
-║     Users: 0                                  ║
-╚═══════════════════════════════════════════════╝
-    `);
+    console.log(`\n🚀 Meta Portal Flow запущен!`);
+    console.log(`📍 Откройте в браузере: http://localhost:${PORT}\n`);
 });
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully...');
-    server.close(() => {
-        console.log('Server closed');
-        process.exit(0);
-    });
-});
-
-module.exports = { app, server, io };
