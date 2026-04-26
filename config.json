@@ -1,1 +1,16 @@
-{"themes": ["dark", "light"], "avatars": []}
+{
+  "themes": ["dark", "light"],
+  "avatars": ["👤", "😎", "🤖", "👽", "🦊", "🐱", "🦁", "🐼", "🐨", "🐸", "🦄", "🐲", "🌟", "🔥", "💎", "🎮"],
+  "achievements": [
+    { "id": "first_message", "title": "Первое сообщение", "description": "Отправьте первое сообщение", "icon": "💬" },
+    { "id": "chatter_10", "title": "Болтун", "description": "Отправьте 10 сообщений", "icon": "🗣️" },
+    { "id": "chatter_50", "title": "Говорун", "description": "Отправьте 50 сообщений", "icon": "📢" },
+    { "id": "chatter_100", "title": "Душа компании", "description": "Отправьте 100 сообщений", "icon": "🎉" },
+    { "id": "first_friend", "title": "Новый друг", "description": "Добавьте первого друга", "icon": "🤝" },
+    { "id": "friend_5", "title": "Популярный", "description": "Имейте 5 друзей", "icon": "⭐" },
+    { "id": "night_owl", "title": "Сова", "description": "Будьте онлайн после полуночи", "icon": "🦉" },
+    { "id": "early_bird", "title": "Жаворонок", "description": "Будьте онлайн до 6 утра", "icon": "🐦" }
+  ],
+  "maxChatHistory": 50,
+  "serverPort": 3000
+}
