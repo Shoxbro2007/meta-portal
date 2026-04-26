@@ -1,311 +1,501 @@
-// META PORTAL: SPATIAL FLOW LOGIC
+// Meta Portal 2.0 - Клиентская логика
+// Живой Холст + Эмоции + Дзен + Голосовые сообщения
 
-class SpatialChat {
-    constructor() {
-        this.socket = io();
-        this.username = localStorage.getItem('mp_username') || 'Гость';
-        this.messages = [];
-        this.bubbleElements = new Map(); // Храним ссылки на DOM элементы
-        this.driftSpeed = parseFloat(localStorage.getItem('mp_drift_speed')) || 2;
-        this.container = document.getElementById('spatial-container');
-        this.isDarkTheme = true;
-        
-        this.init();
+const socket = io();
+
+// Состояние приложения
+const state = {
+    currentUser: null,
+    users: new Map(),
+    messages: [],
+    config: null,
+    score: 0,
+    mode: 'chat',
+    theme: 'dark',
+    driftSpeed: 1,
+    isRecording: false,
+    mediaRecorder: null,
+    audioChunks: []
+};
+
+// DOM элементы
+const elements = {};
+
+// Инициализация
+function init() {
+    cacheElements();
+    setupEventListeners();
+    loadSettings();
+    showLoginModal();
+}
+
+function cacheElements() {
+    elements.app = document.getElementById('app');
+    elements.canvas = document.getElementById('canvas');
+    elements.loginModal = document.getElementById('login-modal');
+    elements.loginForm = document.getElementById('login-form');
+    elements.usernameInput = document.getElementById('username');
+    elements.colorPicker = document.getElementById('color-picker');
+    elements.modeToggle = document.getElementById('mode-toggle');
+    elements.themeToggle = document.getElementById('theme-toggle');
+    elements.chatInput = document.getElementById('chat-input');
+    elements.sendBtn = document.getElementById('send-btn');
+    elements.voiceBtn = document.getElementById('voice-btn');
+    elements.voiceVisualizer = document.getElementById('voice-visualizer');
+    elements.settingsPanel = document.getElementById('settings-panel');
+    elements.scoreDisplay = document.getElementById('score-display');
+    elements.userCount = document.getElementById('user-count');
+    elements.notifications = document.getElementById('notifications');
+}
+
+function setupEventListeners() {
+    if (elements.loginForm) {
+        elements.loginForm.addEventListener('submit', handleLogin);
     }
 
-    init() {
-        this.setupUI();
-        this.connectSocket();
-        this.startDriftEngine();
-        this.loadHistory();
-    }
-
-    setupUI() {
-        // Элементы
-        this.input = document.getElementById('message-input');
-        this.sendBtn = document.getElementById('send-btn');
-        this.usernameDisplay = document.getElementById('username-display');
-        this.themeToggle = document.getElementById('theme-toggle');
-        this.settingsBtn = document.getElementById('settings-btn');
-        this.modal = document.getElementById('settings-modal');
-        this.closeModalBtn = document.querySelector('.close-modal');
-        this.configUsernameInput = document.getElementById('config-username');
-        this.driftSpeedInput = document.getElementById('drift-speed');
-
-        // Установка имени
-        this.usernameDisplay.textContent = this.username;
-        this.configUsernameInput.value = this.username;
-        this.driftSpeedInput.value = this.driftSpeed;
-
-        // События
-        this.sendBtn.addEventListener('click', () => this.sendMessage());
-        this.input.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.sendMessage();
-        });
-
-        this.themeToggle.addEventListener('click', () => this.toggleTheme());
-        
-        this.settingsBtn.addEventListener('click', () => {
-            this.modal.classList.remove('hidden');
-        });
-
-        this.closeModalBtn.addEventListener('click', () => {
-            this.modal.classList.add('hidden');
-        });
-
-        // Сохранение настроек
-        this.configUsernameInput.addEventListener('change', (e) => {
-            this.username = e.target.value.trim() || 'Гость';
-            localStorage.setItem('mp_username', this.username);
-            this.usernameDisplay.textContent = this.username;
-            this.socket.emit('username_change', this.username);
-        });
-
-        this.driftSpeedInput.addEventListener('input', (e) => {
-            this.driftSpeed = parseFloat(e.target.value);
-            localStorage.setItem('mp_drift_speed', this.driftSpeed);
-        });
-
-        // Закрытие модального окна по клику вне
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) {
-                this.modal.classList.add('hidden');
+    if (elements.sendBtn && elements.chatInput) {
+        elements.sendBtn.addEventListener('click', sendMessage);
+        elements.chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
             }
         });
     }
 
-    connectSocket() {
-        this.socket.on('connect', () => {
-            console.log('Connected to Meta Portal Flow');
-            this.socket.emit('join', { username: this.username });
+    if (elements.voiceBtn) {
+        elements.voiceBtn.addEventListener('mousedown', startRecording);
+        elements.voiceBtn.addEventListener('mouseup', stopRecording);
+        elements.voiceBtn.addEventListener('mouseleave', stopRecording);
+        elements.voiceBtn.addEventListener('touchstart', startRecording);
+        elements.voiceBtn.addEventListener('touchend', stopRecording);
+    }
+
+    if (elements.modeToggle) {
+        elements.modeToggle.addEventListener('click', toggleMode);
+    }
+
+    if (elements.themeToggle) {
+        elements.themeToggle.addEventListener('click', toggleTheme);
+    }
+
+    const speedSlider = document.getElementById('drift-speed');
+    if (speedSlider) {
+        speedSlider.addEventListener('input', (e) => {
+            state.driftSpeed = parseFloat(e.target.value);
+            saveSettings();
         });
+    }
 
-        this.socket.on('chat_history', (history) => {
-            this.messages = history;
-            this.renderHistory();
-        });
-
-        this.socket.on('new_message', (data) => {
-            this.addMessage(data);
-        });
-
-        this.socket.on('user_joined', (data) => {
-            console.log(`User joined: ${data.username}`);
-            // Можно добавить системное уведомление в поток
-        });
-
-        this.socket.on('user_left', (data) => {
-            console.log(`User left: ${data.username}`);
+    const closeSettings = document.querySelector('.close-settings');
+    if (closeSettings) {
+        closeSettings.addEventListener('click', () => {
+            elements.settingsPanel?.classList.remove('active');
         });
     }
 
-    sendMessage() {
-        const text = this.input.value.trim();
-        if (!text) return;
-
-        const messageData = {
-            username: this.username,
-            text: text,
-            timestamp: Date.now()
-        };
-
-        this.socket.emit('chat_message', messageData);
-        this.input.value = '';
-        this.input.focus();
-    }
-
-    addMessage(data) {
-        // Проверяем, не существует ли уже такое сообщение
-        if (this.bubbleElements.has(data.id)) return;
-
-        this.messages.push(data);
-        this.createBubble(data);
-    }
-
-    createBubble(data) {
-        const bubble = document.createElement('div');
-        bubble.className = `message-bubble ${data.username === this.username ? 'self' : ''}`;
-        bubble.id = `msg-${data.id}`;
-        
-        // Позиционирование
-        const positions = this.calculatePosition();
-        bubble.style.left = `${positions.x}px`;
-        bubble.style.top = `${positions.y}px`;
-        
-        // Случайный небольшой поворот для естественности
-        const rotation = (Math.random() - 0.5) * 10;
-        bubble.style.transform = `rotate(${rotation}deg)`;
-
-        // Данные для дрейфа
-        bubble.dataset.vx = (Math.random() - 0.5) * 0.5; // Скорость X
-        bubble.dataset.vy = (Math.random() - 0.5) * 0.5; // Скорость Y
-        bubble.dataset.rotSpeed = (Math.random() - 0.5) * 0.2; // Скорость вращения
-
-        const timeString = new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-
-        bubble.innerHTML = `
-            <span class="message-author">${this.escapeHtml(data.username)}</span>
-            <span class="message-text">${this.escapeHtml(data.text)}</span>
-            <span class="message-time">${timeString}</span>
-        `;
-
-        // Интерактивность: клик приближает
-        bubble.addEventListener('click', () => {
-            this.focusBubble(bubble);
+    const settingsBtn = document.getElementById('settings-btn');
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', () => {
+            elements.settingsPanel?.classList.add('active');
         });
-
-        this.container.appendChild(bubble);
-        this.bubbleElements.set(data.id, bubble);
-
-        // Удаляем подсказку если есть
-        const hint = document.querySelector('.hint-text');
-        if (hint) hint.style.display = 'none';
-
-        // Ограничение количества сообщений на экране
-        if (this.bubbleElements.size > 50) {
-            const oldestId = this.messages[0].id;
-            const oldestBubble = document.getElementById(`msg-${oldestId}`);
-            if (oldestBubble) {
-                oldestBubble.style.opacity = '0';
-                setTimeout(() => oldestBubble.remove(), 500);
-                this.bubbleElements.delete(oldestId);
-                this.messages.shift();
-            }
-        }
     }
 
-    calculatePosition() {
-        // Генерируем случайную позицию в пределах экрана с отступами
-        const padding = 80;
-        const maxX = window.innerWidth - 320 - padding; // 320 ширина пузыря
-        const maxY = window.innerHeight - 150 - padding; // 150 высота панели ввода
+    animateCanvas();
+}
 
-        let x, y, overlap;
-        let attempts = 0;
-        
-        // Пытаемся найти место без перекрытий (максимум 50 попыток)
-        do {
-            x = Math.random() * (maxX - padding) + padding;
-            y = Math.random() * (maxY - padding) + padding;
-            overlap = false;
-
-            for (const [id, bubble] of this.bubbleElements) {
-                const rect = bubble.getBoundingClientRect();
-                const dist = Math.hypot(
-                    (x + 150) - (rect.left + rect.width/2),
-                    (y + 40) - (rect.top + rect.height/2)
-                );
-                if (dist < 200) { // Минимальное расстояние между центрами
-                    overlap = true;
-                    break;
-                }
-            }
-            attempts++;
-        } while (overlap && attempts < 50);
-
-        return { x, y };
-    }
-
-    renderHistory() {
-        this.container.innerHTML = '<div class="hint-text">Чат живет своей жизнью...</div>';
-        this.bubbleElements.clear();
-        
-        // Рендерим последние 30 сообщений из истории
-        const historyToRender = this.messages.slice(-30);
-        historyToRender.forEach(msg => this.createBubble(msg));
-    }
-
-    startDriftEngine() {
-        // Движок дрейфа сообщений
-        const animate = () => {
-            for (const [id, bubble] of this.bubbleElements) {
-                if (!bubble) continue;
-
-                // Получаем текущие координаты
-                let currentLeft = parseFloat(bubble.style.left) || 0;
-                let currentTop = parseFloat(bubble.style.top) || 0;
-                
-                // Получаем скорости из dataset
-                let vx = parseFloat(bubble.dataset.vx) || 0;
-                let vy = parseFloat(bubble.dataset.vy) || 0;
-                let rot = parseFloat(bubble.style.transform.replace(/.*rotate\(([^)]*)\).*/, '$1')) || 0;
-                let rotSpeed = parseFloat(bubble.dataset.rotSpeed) || 0;
-
-                // Обновляем позиции
-                const speedMultiplier = this.driftSpeed * 0.1;
-                currentLeft += vx * speedMultiplier;
-                currentTop += vy * speedMultiplier;
-                rot += rotSpeed * speedMultiplier;
-
-                // Границы экрана (отталкивание)
-                const maxX = window.innerWidth - bubble.offsetWidth - 20;
-                const maxY = window.innerHeight - bubble.offsetHeight - 100;
-
-                if (currentLeft <= 20 || currentLeft >= maxX) {
-                    vx = -vx;
-                    currentLeft = Math.max(20, Math.min(currentLeft, maxX));
-                }
-                if (currentTop <= 20 || currentTop >= maxY) {
-                    vy = -vy;
-                    currentTop = Math.max(20, Math.min(currentTop, maxY));
-                }
-
-                // Сохраняем обратно
-                bubble.style.left = `${currentLeft}px`;
-                bubble.style.top = `${currentTop}px`;
-                bubble.style.transform = `rotate(${rot}deg)`;
-                
-                bubble.dataset.vx = vx;
-                bubble.dataset.vy = vy;
-            }
-
-            requestAnimationFrame(animate);
-        };
-
-        animate();
-    }
-
-    focusBubble(bubble) {
-        // Приближаем выбранное сообщение
-        for (const [id, b] of this.bubbleElements) {
-            if (b !== bubble) {
-                b.style.opacity = '0.3';
-                b.style.zIndex = '1';
-            } else {
-                b.style.opacity = '1';
-                b.style.zIndex = '1000';
-                b.style.transform = 'scale(1.2) rotate(0deg)';
-            }
-        }
-
-        // Возвращаем как было через 3 секунды
-        setTimeout(() => {
-            for (const [id, b] of this.bubbleElements) {
-                b.style.opacity = '1';
-                b.style.zIndex = '';
-                b.style.transform = '';
-            }
-        }, 3000);
-    }
-
-    toggleTheme() {
-        this.isDarkTheme = !this.isDarkTheme;
-        document.body.className = this.isDarkTheme ? 'theme-dark' : 'theme-light';
-        this.themeToggle.textContent = this.isDarkTheme ? '🌓' : '☀️';
-    }
-
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-
-    loadHistory() {
-        // Запрос истории будет обработан сервером автоматически при подключении
+function showLoginModal() {
+    if (elements.loginModal) {
+        elements.loginModal.classList.add('active');
+        generateAvatarOptions();
     }
 }
 
-// Инициализация при загрузке
-document.addEventListener('DOMContentLoaded', () => {
-    window.chat = new SpatialChat();
+function generateAvatarOptions() {
+    const container = document.getElementById('avatar-options');
+    if (!container || !state.config) return;
+
+    container.innerHTML = '';
+    state.config.avatars.forEach((avatar) => {
+        const div = document.createElement('div');
+        div.className = 'avatar-option';
+        div.dataset.avatar = avatar.url;
+        div.innerHTML = `<img src="${avatar.url}" alt="${avatar.name}">`;
+        div.addEventListener('click', () => {
+            document.querySelectorAll('.avatar-option').forEach(el => el.classList.remove('selected'));
+            div.classList.add('selected');
+        });
+        container.appendChild(div);
+    });
+
+    if (container.firstChild) {
+        container.firstChild.classList.add('selected');
+    }
+}
+
+function handleLogin(e) {
+    e.preventDefault();
+    
+    const username = elements.usernameInput?.value.trim() || 'Аноним';
+    const selectedAvatar = document.querySelector('.avatar-option.selected');
+    const avatar = selectedAvatar?.dataset.avatar || (state.config?.avatars[0]?.url || 'default');
+    const color = elements.colorPicker?.value || '#' + Math.floor(Math.random()*16777215).toString(16);
+
+    state.currentUser = { name: username, avatar, color };
+
+    socket.emit('join', {
+        name: username,
+        avatar: avatar,
+        color: color,
+        mode: state.mode
+    });
+
+    if (elements.loginModal) {
+        elements.loginModal.classList.remove('active');
+    }
+
+    const chatContainer = document.getElementById('chat-container');
+    if (chatContainer) {
+        chatContainer.style.display = 'block';
+    }
+}
+
+function sendMessage() {
+    const input = elements.chatInput;
+    if (!input || !input.value.trim()) return;
+
+    const text = input.value.trim();
+    
+    let mood = 'neutral';
+    if (/[!?]{2,}|рад|круто|супер|люблю|😍|🔥|🚀|❤️/.test(text)) mood = 'happy';
+    if (/груст|устал|плохо|😭|💔|😞|😢/.test(text)) mood = 'sad';
+    if (/зл|бесит|ненавижу|😡|🤬|👎|💢/.test(text)) mood = 'angry';
+
+    let x, y;
+    if (mood === 'happy') {
+        x = Math.random() * 80 + 10;
+        y = Math.random() * 30 + 10;
+    } else if (mood === 'sad') {
+        x = Math.random() * 80 + 10;
+        y = Math.random() * 30 + 60;
+    } else {
+        x = Math.random() * 80 + 10;
+        y = Math.random() * 80 + 10;
+    }
+
+    socket.emit('chatMessage', {
+        text: text,
+        type: 'text',
+        x: x,
+        y: y
+    });
+
+    input.value = '';
+    input.focus();
+}
+
+async function startRecording() {
+    if (state.isRecording) return;
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        state.mediaRecorder = new MediaRecorder(stream);
+        state.audioChunks = [];
+
+        state.mediaRecorder.ondataavailable = (event) => {
+            state.audioChunks.push(event.data);
+        };
+
+        state.mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(state.audioChunks, { type: 'audio/webm' });
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = () => {
+                const base64Audio = reader.result;
+                socket.emit('chatMessage', {
+                    text: '🎤 Голосовое сообщение',
+                    type: 'voice',
+                    voiceData: base64Audio
+                });
+            };
+            
+            stream.getTracks().forEach(track => track.stop());
+        };
+
+        state.mediaRecorder.start();
+        state.isRecording = true;
+        
+        if (elements.voiceBtn) {
+            elements.voiceBtn.classList.add('recording');
+        }
+        if (elements.voiceVisualizer) {
+            elements.voiceVisualizer.style.display = 'block';
+        }
+
+    } catch (err) {
+        console.error('Ошибка доступа к микрофону:', err);
+        showNotification('❌ Нет доступа к микрофону', 'error');
+    }
+}
+
+function stopRecording() {
+    if (!state.isRecording || !state.mediaRecorder) return;
+
+    state.mediaRecorder.stop();
+    state.isRecording = false;
+    
+    if (elements.voiceBtn) {
+        elements.voiceBtn.classList.remove('recording');
+    }
+    if (elements.voiceVisualizer) {
+        setTimeout(() => {
+            elements.voiceVisualizer.style.display = 'none';
+        }, 500);
+    }
+}
+
+function toggleMode() {
+    state.mode = state.mode === 'chat' ? 'zen' : 'chat';
+    socket.emit('setMode', state.mode);
+    
+    if (elements.modeToggle) {
+        elements.modeToggle.textContent = state.mode === 'chat' ? '🧘 Режим Дзен' : '💬 Обычный чат';
+    }
+
+    const chatContainer = document.getElementById('chat-container');
+    if (chatContainer) {
+        chatContainer.classList.toggle('zen-mode', state.mode === 'zen');
+    }
+
+    showNotification(state.mode === 'zen' ? '🧘 Режим Дзен активирован' : '💬 Обычный режим', 'info');
+}
+
+function toggleTheme() {
+    state.theme = state.theme === 'dark' ? 'light' : 'dark';
+    document.body.classList.toggle('light-theme', state.theme === 'light');
+    saveSettings();
+}
+
+function animateCanvas() {
+    const bubbles = document.querySelectorAll('.message-bubble');
+    
+    bubbles.forEach(bubble => {
+        const currentX = parseFloat(bubble.dataset.x) || 50;
+        const currentY = parseFloat(bubble.dataset.y) || 50;
+        
+        let newX = currentX + (Math.random() - 0.5) * state.driftSpeed * 0.1;
+        let newY = currentY + (Math.random() - 0.5) * state.driftSpeed * 0.1;
+        
+        if (newX < 5 || newX > 95) newX = currentX - (newX - currentX);
+        if (newY < 5 || newY > 95) newY = currentY - (newY - currentY);
+        
+        newX = Math.max(5, Math.min(95, newX));
+        newY = Math.max(5, Math.min(95, newY));
+        
+        bubble.style.left = newX + '%';
+        bubble.style.top = newY + '%';
+        bubble.dataset.x = newX;
+        bubble.dataset.y = newY;
+    });
+
+    requestAnimationFrame(animateCanvas);
+}
+
+function createMessageBubble(message) {
+    const bubble = document.createElement('div');
+    bubble.className = `message-bubble mood-${message.mood}`;
+    bubble.dataset.id = message.id;
+    bubble.dataset.x = message.x;
+    bubble.dataset.y = message.y;
+    
+    if (message.type === 'zen') {
+        bubble.classList.add('zen-bubble');
+        bubble.innerHTML = `<div class="zen-emoji">${message.text}</div>`;
+    } else if (message.type === 'voice') {
+        bubble.classList.add('voice-bubble');
+        bubble.innerHTML = `
+            <div class="avatar-mini" style="background-image: url(${message.userAvatar || 'default'})"></div>
+            <div class="voice-wave">🎤</div>
+            <div class="message-text">${message.userName}: Голосовое сообщение</div>
+        `;
+    } else {
+        bubble.innerHTML = `
+            <div class="avatar-mini" style="background-image: url(${message.userAvatar || 'default'}); border-color: ${message.userColor || '#fff'}"></div>
+            <div class="message-author" style="color: ${message.userColor || '#fff'}">${message.userName}</div>
+            <div class="message-text">${escapeHtml(message.text)}</div>
+            <div class="message-mood">${getMoodEmoji(message.mood)}</div>
+        `;
+    }
+
+    bubble.style.left = message.x + '%';
+    bubble.style.top = message.y + '%';
+    bubble.style.transform = `rotate(${message.rotation || 0}deg) scale(${message.scale || 1})`;
+
+    bubble.addEventListener('click', () => {
+        focusOnBubble(bubble);
+    });
+
+    const canvas = document.getElementById('canvas') || document.getElementById('chat-container');
+    if (canvas) {
+        canvas.appendChild(bubble);
+    }
+
+    setTimeout(() => {
+        if (bubble.parentNode) {
+            bubble.classList.add('fade-out');
+            setTimeout(() => bubble.remove(), 1000);
+        }
+    }, 60000);
+
+    return bubble;
+}
+
+function focusOnBubble(focusedBubble) {
+    const allBubbles = document.querySelectorAll('.message-bubble');
+    allBubbles.forEach(b => {
+        if (b !== focusedBubble) {
+            b.classList.add('blurred');
+        } else {
+            b.classList.add('focused');
+            b.style.zIndex = '1000';
+        }
+    });
+
+    const resetHandler = (e) => {
+        if (!focusedBubble.contains(e.target)) {
+            allBubbles.forEach(b => {
+                b.classList.remove('blurred', 'focused');
+                b.style.zIndex = '';
+            });
+            document.removeEventListener('click', resetHandler);
+        }
+    };
+    setTimeout(() => document.addEventListener('click', resetHandler), 100);
+}
+
+function getMoodEmoji(mood) {
+    const moods = { happy: '😊', sad: '😢', angry: '😠', zen: '🧘', neutral: '😐' };
+    return moods[mood] || '😐';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showNotification(message, type = 'info') {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    
+    if (elements.notifications) {
+        elements.notifications.appendChild(notification);
+        setTimeout(() => {
+            notification.classList.add('fade-out');
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
+    }
+}
+
+function loadSettings() {
+    const saved = localStorage.getItem('metaPortalSettings');
+    if (saved) {
+        const settings = JSON.parse(saved);
+        state.theme = settings.theme || 'dark';
+        state.driftSpeed = settings.driftSpeed || 1;
+        
+        document.body.classList.toggle('light-theme', state.theme === 'light');
+        
+        const speedSlider = document.getElementById('drift-speed');
+        if (speedSlider) speedSlider.value = state.driftSpeed;
+    }
+}
+
+function saveSettings() {
+    localStorage.setItem('metaPortalSettings', JSON.stringify({
+        theme: state.theme,
+        driftSpeed: state.driftSpeed
+    }));
+}
+
+// Socket.IO обработчики
+socket.on('init', (data) => {
+    state.config = data.config;
+    state.messages = data.messages || [];
+    
+    state.messages.forEach(msg => createMessageBubble(msg));
+    
+    data.users.forEach(user => {
+        state.users.set(user.id, user);
+    });
+    updateUserCount();
 });
+
+socket.on('newMessage', (message) => {
+    state.messages.push(message);
+    createMessageBubble(message);
+    
+    if (message.userId !== socket.id) {
+        playNotificationSound();
+    }
+});
+
+socket.on('userJoined', (user) => {
+    state.users.set(user.id, user);
+    updateUserCount();
+    showNotification(`👋 ${user.name} присоединился`, 'success');
+});
+
+socket.on('userLeft', (userId) => {
+    const user = state.users.get(userId);
+    state.users.delete(userId);
+    updateUserCount();
+    if (user) {
+        showNotification(`👋 ${user.name} вышел`, 'info');
+    }
+});
+
+socket.on('userList', (users) => {
+    state.users.clear();
+    users.forEach(user => state.users.set(user.id, user));
+    updateUserCount();
+});
+
+socket.on('userMoodChanged', (data) => {
+    const user = state.users.get(data.userId);
+    if (user) {
+        user.mood = data.mood;
+    }
+});
+
+socket.on('scoreUpdate', (score) => {
+    state.score = score;
+    if (elements.scoreDisplay) {
+        elements.scoreDisplay.textContent = `⚡ ${score}`;
+    }
+});
+
+socket.on('achievementUnlocked', (achievement) => {
+    showNotification(`🏆 Достижение: ${achievement.name}`, 'success');
+    const achievementPopup = document.createElement('div');
+    achievementPopup.className = 'achievement-popup';
+    achievementPopup.innerHTML = `
+        <div class="achievement-icon">🏆</div>
+        <div class="achievement-name">${achievement.name}</div>
+    `;
+    document.body.appendChild(achievementPopup);
+    setTimeout(() => achievementPopup.remove(), 3000);
+});
+
+function updateUserCount() {
+    if (elements.userCount) {
+        elements.userCount.textContent = `👥 ${state.users.size}`;
+    }
+}
+
+function playNotificationSound() {
+    // Можно добавить аудиофайл
+}
+
+document.addEventListener('DOMContentLoaded', init);
