@@ -1,1 +1,111 @@
-<!DOCTYPE html><html><head><title>Meta Portal</title></head><body><h1>Meta Portal</h1></body></html>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meta Portal</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="logo">🌐 Meta Portal</h1>
+                <button class="theme-toggle" id="themeToggle" title="Сменить тему">
+                    <span class="theme-icon">🌙</span>
+                </button>
+            </div>
+            
+            <div class="user-profile">
+                <div class="avatar-selector" id="avatarSelector">
+                    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%23667eea'/%3E%3Ctext x='50' y='55' text-anchor='middle' font-size='40' fill='white'%3E👤%3C/text%3E%3C/svg%3E" alt="Avatar" class="current-avatar">
+                </div>
+                <input type="text" id="usernameInput" placeholder="Ваше имя" class="username-input" maxlength="20">
+                <div class="user-status">
+                    <span class="status-indicator online"></span>
+                    <span class="status-text">Онлайн</span>
+                </div>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-btn active" data-tab="chat">💬 Чат</button>
+                <button class="nav-btn" data-tab="friends">👥 Друзья</button>
+                <button class="nav-btn" data-tab="achievements">🏆 Достижения</button>
+            </nav>
+
+            <div class="achievements-preview" id="achievementsPreview">
+                <h3>Последние достижения</h3>
+                <div class="achievement-list" id="miniAchievements"></div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Chat Tab -->
+            <section class="tab-content active" id="chatTab">
+                <div class="chat-container">
+                    <div class="chat-header">
+                        <h2>Глобальный чат</h2>
+                        <div class="chat-stats">
+                            <span class="online-count">🟢 <span id="onlineCount">0</span> онлайн</span>
+                        </div>
+                    </div>
+                    <div class="messages-container" id="messagesContainer">
+                        <div class="welcome-message">
+                            <h3>Добро пожаловать в Meta Portal! 🎉</h3>
+                            <p>Отправьте первое сообщение и начните общение!</p>
+                        </div>
+                    </div>
+                    <div class="message-input-container">
+                        <input type="text" id="messageInput" placeholder="Напишите сообщение..." maxlength="500">
+                        <button class="send-btn" id="sendBtn">➤</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Friends Tab -->
+            <section class="tab-content" id="friendsTab">
+                <div class="friends-container">
+                    <h2>Друзья</h2>
+                    <div class="friends-search">
+                        <input type="text" id="friendSearch" placeholder="Поиск друзей...">
+                        <button class="add-friend-btn" id="addFriendBtn">+ Добавить</button>
+                    </div>
+                    <div class="friends-list" id="friendsList">
+                        <div class="empty-state">
+                            <p>У вас пока нет друзей</p>
+                            <p class="hint">Используйте поиск чтобы найти людей</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Achievements Tab -->
+            <section class="tab-content" id="achievementsTab">
+                <div class="achievements-container">
+                    <h2>Достижения</h2>
+                    <div class="achievements-grid" id="achievementsGrid">
+                        <!-- Будут заполнены через JS -->
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Avatar Modal -->
+    <div class="modal" id="avatarModal">
+        <div class="modal-content">
+            <h3>Выберите аватар</h3>
+            <div class="avatar-grid" id="avatarGrid"></div>
+            <button class="close-modal" id="closeAvatarModal">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
