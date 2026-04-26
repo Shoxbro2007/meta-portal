@@ -2,12 +2,6 @@
 # Dependencies
 node_modules/
 
-# Package lock file
-package-lock.json
-
-# Logs
-*.log
-
 # Environment variables
 .env
 .env.local
@@ -16,31 +10,29 @@ package-lock.json
 # IDE files
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# OS generated files
-.DS_Store
-Thumbs.db
+# Logs
+*.log
 
-# Build outputs
+# Temporary files
+*.tmp
+
+# Build artifacts
 dist/
 build/
 target/
 
-# Python cache
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Coverage reports
-coverage/
-htmlcov/
-
-# Temporary files
-*.tmp
-*.temp
-*.swp
-*.swo
+.Python
+venv/
+.venv/
+.env
 
 # Compressed files
 *.zip

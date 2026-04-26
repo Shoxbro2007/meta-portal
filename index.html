@@ -30,6 +30,7 @@
 
             <nav class="nav-menu">
                 <button class="nav-btn active" data-tab="chat">💬 Чат</button>
+                <button class="nav-btn" data-tab="dialogs">📩 Диалоги</button>
                 <button class="nav-btn" data-tab="friends">👥 Друзья</button>
                 <button class="nav-btn" data-tab="achievements">🏆 Достижения</button>
             </nav>
@@ -46,7 +47,7 @@
             <section class="tab-content active" id="chatTab">
                 <div class="chat-container">
                     <div class="chat-header">
-                        <h2>Глобальный чат</h2>
+                        <h2 id="chatHeaderTitle">Глобальный чат</h2>
                         <div class="chat-stats">
                             <span class="online-count">🟢 <span id="onlineCount">0</span> онлайн</span>
                         </div>
@@ -60,6 +61,19 @@
                     <div class="message-input-container">
                         <input type="text" id="messageInput" placeholder="Напишите сообщение..." maxlength="500">
                         <button class="send-btn" id="sendBtn">➤</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Dialogs Tab -->
+            <section class="tab-content" id="dialogsTab">
+                <div class="dialogs-container">
+                    <h2>Диалоги</h2>
+                    <div class="dialogs-list" id="dialogsList">
+                        <div class="empty-state">
+                            <p>Нет активных диалогов</p>
+                            <p class="hint">Начните общение во вкладке "Чат" или выберите пользователя в "Друзьях"</p>
+                        </div>
                     </div>
                 </div>
             </section>
