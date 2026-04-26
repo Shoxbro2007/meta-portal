@@ -1,501 +1,293 @@
-// Meta Portal 2.0 - Клиентская логика
-// Живой Холст + Эмоции + Дзен + Голосовые сообщения
-
+// Подключение к серверу
 const socket = io();
 
-// Состояние приложения
-const state = {
-    currentUser: null,
-    users: new Map(),
-    messages: [],
-    config: null,
-    score: 0,
-    mode: 'chat',
-    theme: 'dark',
-    driftSpeed: 1,
-    isRecording: false,
-    mediaRecorder: null,
-    audioChunks: []
-};
+// Элементы DOM
+const chatCanvas = document.getElementById('chatCanvas');
+const msgInput = document.getElementById('msgInput');
+const sendBtn = document.getElementById('sendBtn');
+const voiceBtn = document.getElementById('voiceBtn');
+const voiceVisualizer = document.getElementById('voiceVisualizer');
+const themeBtn = document.getElementById('themeBtn');
+const zenModeBtn = document.getElementById('zenModeBtn');
+const scoreVal = document.getElementById('scoreVal');
+const emptyState = document.getElementById('emptyState');
+const toastContainer = document.getElementById('toastContainer');
 
-// DOM элементы
-const elements = {};
+// Состояние приложения
+let state = {
+    username: 'User' + Math.floor(Math.random() * 1000),
+    score: 0,
+    isZenMode: false,
+    isRecording: false,
+    messages: [],
+    bubbles: []
+};
 
 // Инициализация
 function init() {
-    cacheElements();
     setupEventListeners();
     loadSettings();
-    showLoginModal();
+    
+    // Загрузка истории сообщений
+    socket.emit('getHistory');
 }
 
-function cacheElements() {
-    elements.app = document.getElementById('app');
-    elements.canvas = document.getElementById('canvas');
-    elements.loginModal = document.getElementById('login-modal');
-    elements.loginForm = document.getElementById('login-form');
-    elements.usernameInput = document.getElementById('username');
-    elements.colorPicker = document.getElementById('color-picker');
-    elements.modeToggle = document.getElementById('mode-toggle');
-    elements.themeToggle = document.getElementById('theme-toggle');
-    elements.chatInput = document.getElementById('chat-input');
-    elements.sendBtn = document.getElementById('send-btn');
-    elements.voiceBtn = document.getElementById('voice-btn');
-    elements.voiceVisualizer = document.getElementById('voice-visualizer');
-    elements.settingsPanel = document.getElementById('settings-panel');
-    elements.scoreDisplay = document.getElementById('score-display');
-    elements.userCount = document.getElementById('user-count');
-    elements.notifications = document.getElementById('notifications');
-}
-
+// Настройка обработчиков событий
 function setupEventListeners() {
-    if (elements.loginForm) {
-        elements.loginForm.addEventListener('submit', handleLogin);
-    }
+    sendBtn.addEventListener('click', sendMessage);
+    msgInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendMessage();
+    });
+    
+    // Голосовые сообщения
+    voiceBtn.addEventListener('mousedown', startRecording);
+    voiceBtn.addEventListener('mouseup', stopRecording);
+    voiceBtn.addEventListener('mouseleave', stopRecording);
+    
+    // Тач-события для мобильных
+    voiceBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        startRecording();
+    });
+    voiceBtn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        stopRecording();
+    });
+    
+    // Кнопки управления
+    themeBtn.addEventListener('click', toggleTheme);
+    zenModeBtn.addEventListener('click', toggleZenMode);
+    
+    // Сокет события
+    socket.on('message', handleNewMessage);
+    socket.on('history', handleHistory);
+    socket.on('userCount', updateUserCount);
+}
 
-    if (elements.sendBtn && elements.chatInput) {
-        elements.sendBtn.addEventListener('click', sendMessage);
-        elements.chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
+// Отправка сообщения
+function sendMessage() {
+    const text = msgInput.value.trim();
+    if (!text) return;
+    
+    const message = {
+        id: Date.now(),
+        author: state.username,
+        text: state.isZenMode ? extractEmojis(text) : text,
+        timestamp: new Date().toISOString(),
+        emotion: detectEmotion(text),
+        type: state.isZenMode ? 'zen' : 'text'
+    };
+    
+    socket.emit('message', message);
+    msgInput.value = '';
+    addScore(10);
+}
+
+// Извлечение эмодзи
+function extractEmojis(text) {
+    const emojiRegex = /[\p{Emoji}]/u;
+    const emojis = text.match(emojiRegex);
+    return emojis ? emojis.join(' ') : '🌀';
+}
+
+// Определение эмоции
+function detectEmotion(text) {
+    const lower = text.toLowerCase();
+    if (lower.includes('рад') || lower.includes('крут') || lower.includes('!') || lower.includes(':)')) return 'happy';
+    if (lower.includes('груст') || lower.includes('плох') || lower.includes(':(')) return 'sad';
+    if (lower.includes('зл') || lower.includes('бесит')) return 'angry';
+    return 'neutral';
+}
+
+// Обработка нового сообщения
+function handleNewMessage(message) {
+    if (emptyState) emptyState.style.display = 'none';
+    createMessageBubble(message);
+    addScore(5);
+}
+
+// Создание пузыря сообщения
+function createMessageBubble(message) {
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+    bubble.dataset.id = message.id;
+    
+    // Случайная позиция
+    const maxX = chatCanvas.clientWidth - 320;
+    const maxY = chatCanvas.clientHeight - 100;
+    const x = Math.random() * maxX;
+    const y = Math.random() * maxY;
+    
+    bubble.style.left = x + 'px';
+    bubble.style.top = y + 'px';
+    
+    // Цвет в зависимости от эмоции
+    let borderColor = 'var(--glass-border)';
+    if (message.emotion === 'happy') borderColor = '#00cec9';
+    if (message.emotion === 'sad') borderColor = '#6c5ce7';
+    if (message.emotion === 'angry') borderColor = '#fd79a8';
+    bubble.style.borderColor = borderColor;
+    
+    bubble.innerHTML = `
+        <div class="author">${message.author}</div>
+        <div class="text">${message.text}</div>
+        <div class="time">${new Date(message.timestamp).toLocaleTimeString()}</div>
+    `;
+    
+    // Клик для фокусировки
+    bubble.addEventListener('click', () => focusBubble(bubble));
+    
+    chatCanvas.appendChild(bubble);
+    state.bubbles.push({ element: bubble, x, y, vx: (Math.random() - 0.5) * 0.5, vy: (Math.random() - 0.5) * 0.5 });
+    
+    // Анимация появления
+    bubble.style.opacity = '0';
+    bubble.style.transform = 'scale(0.8)';
+    setTimeout(() => {
+        bubble.style.opacity = '1';
+        bubble.style.transform = 'scale(1)';
+    }, 10);
+}
+
+// Фокус на пузыре
+function focusBubble(focusedBubble) {
+    state.bubbles.forEach(b => {
+        if (b.element !== focusedBubble) {
+            b.element.classList.remove('focused');
+            b.element.style.opacity = '0.3';
+        } else {
+            b.element.classList.add('focused');
+            b.element.style.opacity = '1';
+        }
+    });
+    
+    // Снять фокус при клике вне
+    setTimeout(() => {
+        document.addEventListener('click', function unfocus(e) {
+            if (!e.target.closest('.message-bubble')) {
+                state.bubbles.forEach(b => {
+                    b.element.classList.remove('focused');
+                    b.element.style.opacity = '1';
+                });
+                document.removeEventListener('click', unfocus);
             }
         });
-    }
-
-    if (elements.voiceBtn) {
-        elements.voiceBtn.addEventListener('mousedown', startRecording);
-        elements.voiceBtn.addEventListener('mouseup', stopRecording);
-        elements.voiceBtn.addEventListener('mouseleave', stopRecording);
-        elements.voiceBtn.addEventListener('touchstart', startRecording);
-        elements.voiceBtn.addEventListener('touchend', stopRecording);
-    }
-
-    if (elements.modeToggle) {
-        elements.modeToggle.addEventListener('click', toggleMode);
-    }
-
-    if (elements.themeToggle) {
-        elements.themeToggle.addEventListener('click', toggleTheme);
-    }
-
-    const speedSlider = document.getElementById('drift-speed');
-    if (speedSlider) {
-        speedSlider.addEventListener('input', (e) => {
-            state.driftSpeed = parseFloat(e.target.value);
-            saveSettings();
-        });
-    }
-
-    const closeSettings = document.querySelector('.close-settings');
-    if (closeSettings) {
-        closeSettings.addEventListener('click', () => {
-            elements.settingsPanel?.classList.remove('active');
-        });
-    }
-
-    const settingsBtn = document.getElementById('settings-btn');
-    if (settingsBtn) {
-        settingsBtn.addEventListener('click', () => {
-            elements.settingsPanel?.classList.add('active');
-        });
-    }
-
-    animateCanvas();
+    }, 100);
 }
 
-function showLoginModal() {
-    if (elements.loginModal) {
-        elements.loginModal.classList.add('active');
-        generateAvatarOptions();
-    }
-}
-
-function generateAvatarOptions() {
-    const container = document.getElementById('avatar-options');
-    if (!container || !state.config) return;
-
-    container.innerHTML = '';
-    state.config.avatars.forEach((avatar) => {
-        const div = document.createElement('div');
-        div.className = 'avatar-option';
-        div.dataset.avatar = avatar.url;
-        div.innerHTML = `<img src="${avatar.url}" alt="${avatar.name}">`;
-        div.addEventListener('click', () => {
-            document.querySelectorAll('.avatar-option').forEach(el => el.classList.remove('selected'));
-            div.classList.add('selected');
-        });
-        container.appendChild(div);
+// Обработка истории
+function handleHistory(messages) {
+    messages.forEach(msg => {
+        if (emptyState) emptyState.style.display = 'none';
+        createMessageBubble(msg);
     });
-
-    if (container.firstChild) {
-        container.firstChild.classList.add('selected');
-    }
 }
 
-function handleLogin(e) {
-    e.preventDefault();
+// Обновление счета
+function addScore(points) {
+    state.score += points;
+    scoreVal.textContent = state.score;
     
-    const username = elements.usernameInput?.value.trim() || 'Аноним';
-    const selectedAvatar = document.querySelector('.avatar-option.selected');
-    const avatar = selectedAvatar?.dataset.avatar || (state.config?.avatars[0]?.url || 'default');
-    const color = elements.colorPicker?.value || '#' + Math.floor(Math.random()*16777215).toString(16);
-
-    state.currentUser = { name: username, avatar, color };
-
-    socket.emit('join', {
-        name: username,
-        avatar: avatar,
-        color: color,
-        mode: state.mode
-    });
-
-    if (elements.loginModal) {
-        elements.loginModal.classList.remove('active');
-    }
-
-    const chatContainer = document.getElementById('chat-container');
-    if (chatContainer) {
-        chatContainer.style.display = 'block';
-    }
+    // Проверка достижений
+    if (state.score >= 100) showToast('🏆 Достигнут уровень 100!');
+    if (state.score >= 500) showToast('🌟 Мастер чата!');
 }
 
-function sendMessage() {
-    const input = elements.chatInput;
-    if (!input || !input.value.trim()) return;
-
-    const text = input.value.trim();
+// Уведомления
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    toastContainer.appendChild(toast);
     
-    let mood = 'neutral';
-    if (/[!?]{2,}|рад|круто|супер|люблю|😍|🔥|🚀|❤️/.test(text)) mood = 'happy';
-    if (/груст|устал|плохо|😭|💔|😞|😢/.test(text)) mood = 'sad';
-    if (/зл|бесит|ненавижу|😡|🤬|👎|💢/.test(text)) mood = 'angry';
-
-    let x, y;
-    if (mood === 'happy') {
-        x = Math.random() * 80 + 10;
-        y = Math.random() * 30 + 10;
-    } else if (mood === 'sad') {
-        x = Math.random() * 80 + 10;
-        y = Math.random() * 30 + 60;
-    } else {
-        x = Math.random() * 80 + 10;
-        y = Math.random() * 80 + 10;
-    }
-
-    socket.emit('chatMessage', {
-        text: text,
-        type: 'text',
-        x: x,
-        y: y
-    });
-
-    input.value = '';
-    input.focus();
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
-async function startRecording() {
-    if (state.isRecording) return;
+// Переключение темы
+function toggleTheme() {
+    document.body.classList.toggle('light-mode');
+    localStorage.setItem('theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
+}
 
-    try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        state.mediaRecorder = new MediaRecorder(stream);
-        state.audioChunks = [];
+// Режим дзен
+function toggleZenMode() {
+    state.isZenMode = !state.isZenMode;
+    zenModeBtn.style.background = state.isZenMode ? 'var(--secondary)' : '';
+    msgInput.placeholder = state.isZenMode ? 'Только эмодзи...' : 'Мысль вслух...';
+    showToast(state.isZenMode ? '🧘 Режим Дзен включен' : '💬 Обычный режим');
+}
 
-        state.mediaRecorder.ondataavailable = (event) => {
-            state.audioChunks.push(event.data);
-        };
-
-        state.mediaRecorder.onstop = () => {
-            const audioBlob = new Blob(state.audioChunks, { type: 'audio/webm' });
-            const reader = new FileReader();
-            reader.readAsDataURL(audioBlob);
-            reader.onloadend = () => {
-                const base64Audio = reader.result;
-                socket.emit('chatMessage', {
-                    text: '🎤 Голосовое сообщение',
-                    type: 'voice',
-                    voiceData: base64Audio
-                });
-            };
-            
-            stream.getTracks().forEach(track => track.stop());
-        };
-
-        state.mediaRecorder.start();
-        state.isRecording = true;
-        
-        if (elements.voiceBtn) {
-            elements.voiceBtn.classList.add('recording');
-        }
-        if (elements.voiceVisualizer) {
-            elements.voiceVisualizer.style.display = 'block';
-        }
-
-    } catch (err) {
-        console.error('Ошибка доступа к микрофону:', err);
-        showNotification('❌ Нет доступа к микрофону', 'error');
-    }
+// Запись голоса (имитация)
+function startRecording() {
+    state.isRecording = true;
+    voiceVisualizer.classList.remove('hidden');
+    voiceBtn.style.transform = 'scale(0.9)';
 }
 
 function stopRecording() {
-    if (!state.isRecording || !state.mediaRecorder) return;
-
-    state.mediaRecorder.stop();
+    if (!state.isRecording) return;
     state.isRecording = false;
+    voiceVisualizer.classList.add('hidden');
+    voiceBtn.style.transform = 'scale(1)';
     
-    if (elements.voiceBtn) {
-        elements.voiceBtn.classList.remove('recording');
-    }
-    if (elements.voiceVisualizer) {
-        setTimeout(() => {
-            elements.voiceVisualizer.style.display = 'none';
-        }, 500);
-    }
-}
-
-function toggleMode() {
-    state.mode = state.mode === 'chat' ? 'zen' : 'chat';
-    socket.emit('setMode', state.mode);
-    
-    if (elements.modeToggle) {
-        elements.modeToggle.textContent = state.mode === 'chat' ? '🧘 Режим Дзен' : '💬 Обычный чат';
-    }
-
-    const chatContainer = document.getElementById('chat-container');
-    if (chatContainer) {
-        chatContainer.classList.toggle('zen-mode', state.mode === 'zen');
-    }
-
-    showNotification(state.mode === 'zen' ? '🧘 Режим Дзен активирован' : '💬 Обычный режим', 'info');
-}
-
-function toggleTheme() {
-    state.theme = state.theme === 'dark' ? 'light' : 'dark';
-    document.body.classList.toggle('light-theme', state.theme === 'light');
-    saveSettings();
-}
-
-function animateCanvas() {
-    const bubbles = document.querySelectorAll('.message-bubble');
-    
-    bubbles.forEach(bubble => {
-        const currentX = parseFloat(bubble.dataset.x) || 50;
-        const currentY = parseFloat(bubble.dataset.y) || 50;
-        
-        let newX = currentX + (Math.random() - 0.5) * state.driftSpeed * 0.1;
-        let newY = currentY + (Math.random() - 0.5) * state.driftSpeed * 0.1;
-        
-        if (newX < 5 || newX > 95) newX = currentX - (newX - currentX);
-        if (newY < 5 || newY > 95) newY = currentY - (newY - currentY);
-        
-        newX = Math.max(5, Math.min(95, newX));
-        newY = Math.max(5, Math.min(95, newY));
-        
-        bubble.style.left = newX + '%';
-        bubble.style.top = newY + '%';
-        bubble.dataset.x = newX;
-        bubble.dataset.y = newY;
-    });
-
-    requestAnimationFrame(animateCanvas);
-}
-
-function createMessageBubble(message) {
-    const bubble = document.createElement('div');
-    bubble.className = `message-bubble mood-${message.mood}`;
-    bubble.dataset.id = message.id;
-    bubble.dataset.x = message.x;
-    bubble.dataset.y = message.y;
-    
-    if (message.type === 'zen') {
-        bubble.classList.add('zen-bubble');
-        bubble.innerHTML = `<div class="zen-emoji">${message.text}</div>`;
-    } else if (message.type === 'voice') {
-        bubble.classList.add('voice-bubble');
-        bubble.innerHTML = `
-            <div class="avatar-mini" style="background-image: url(${message.userAvatar || 'default'})"></div>
-            <div class="voice-wave">🎤</div>
-            <div class="message-text">${message.userName}: Голосовое сообщение</div>
-        `;
-    } else {
-        bubble.innerHTML = `
-            <div class="avatar-mini" style="background-image: url(${message.userAvatar || 'default'}); border-color: ${message.userColor || '#fff'}"></div>
-            <div class="message-author" style="color: ${message.userColor || '#fff'}">${message.userName}</div>
-            <div class="message-text">${escapeHtml(message.text)}</div>
-            <div class="message-mood">${getMoodEmoji(message.mood)}</div>
-        `;
-    }
-
-    bubble.style.left = message.x + '%';
-    bubble.style.top = message.y + '%';
-    bubble.style.transform = `rotate(${message.rotation || 0}deg) scale(${message.scale || 1})`;
-
-    bubble.addEventListener('click', () => {
-        focusOnBubble(bubble);
-    });
-
-    const canvas = document.getElementById('canvas') || document.getElementById('chat-container');
-    if (canvas) {
-        canvas.appendChild(bubble);
-    }
-
-    setTimeout(() => {
-        if (bubble.parentNode) {
-            bubble.classList.add('fade-out');
-            setTimeout(() => bubble.remove(), 1000);
-        }
-    }, 60000);
-
-    return bubble;
-}
-
-function focusOnBubble(focusedBubble) {
-    const allBubbles = document.querySelectorAll('.message-bubble');
-    allBubbles.forEach(b => {
-        if (b !== focusedBubble) {
-            b.classList.add('blurred');
-        } else {
-            b.classList.add('focused');
-            b.style.zIndex = '1000';
-        }
-    });
-
-    const resetHandler = (e) => {
-        if (!focusedBubble.contains(e.target)) {
-            allBubbles.forEach(b => {
-                b.classList.remove('blurred', 'focused');
-                b.style.zIndex = '';
-            });
-            document.removeEventListener('click', resetHandler);
-        }
+    // Отправка голосового сообщения (имитация)
+    const message = {
+        id: Date.now(),
+        author: state.username,
+        text: '🎤 Голосовое сообщение',
+        timestamp: new Date().toISOString(),
+        emotion: 'neutral',
+        type: 'voice'
     };
-    setTimeout(() => document.addEventListener('click', resetHandler), 100);
-}
-
-function getMoodEmoji(mood) {
-    const moods = { happy: '😊', sad: '😢', angry: '😠', zen: '🧘', neutral: '😐' };
-    return moods[mood] || '😐';
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.textContent = message;
     
-    if (elements.notifications) {
-        elements.notifications.appendChild(notification);
-        setTimeout(() => {
-            notification.classList.add('fade-out');
-            setTimeout(() => notification.remove(), 300);
-        }, 3000);
-    }
+    socket.emit('message', message);
+    addScore(15);
 }
 
+// Обновление счетчика пользователей
+function updateUserCount(count) {
+    // Можно добавить индикатор онлайн
+}
+
+// Загрузка настроек
 function loadSettings() {
-    const saved = localStorage.getItem('metaPortalSettings');
-    if (saved) {
-        const settings = JSON.parse(saved);
-        state.theme = settings.theme || 'dark';
-        state.driftSpeed = settings.driftSpeed || 1;
-        
-        document.body.classList.toggle('light-theme', state.theme === 'light');
-        
-        const speedSlider = document.getElementById('drift-speed');
-        if (speedSlider) speedSlider.value = state.driftSpeed;
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light') {
+        document.body.classList.add('light-mode');
     }
 }
 
-function saveSettings() {
-    localStorage.setItem('metaPortalSettings', JSON.stringify({
-        theme: state.theme,
-        driftSpeed: state.driftSpeed
-    }));
-}
-
-// Socket.IO обработчики
-socket.on('init', (data) => {
-    state.config = data.config;
-    state.messages = data.messages || [];
+// Анимация дрейфа пузырей
+function animateBubbles() {
+    const canvasWidth = chatCanvas.clientWidth;
+    const canvasHeight = chatCanvas.clientHeight;
     
-    state.messages.forEach(msg => createMessageBubble(msg));
-    
-    data.users.forEach(user => {
-        state.users.set(user.id, user);
+    state.bubbles.forEach(bubble => {
+        if (bubble.element.classList.contains('focused')) return;
+        
+        bubble.x += bubble.vx;
+        bubble.y += bubble.vy;
+        
+        // Отталкивание от краев
+        if (bubble.x <= 0 || bubble.x >= canvasWidth - 300) {
+            bubble.vx *= -1;
+            bubble.x = Math.max(0, Math.min(bubble.x, canvasWidth - 300));
+        }
+        if (bubble.y <= 0 || bubble.y >= canvasHeight - 100) {
+            bubble.vy *= -1;
+            bubble.y = Math.max(0, Math.min(bubble.y, canvasHeight - 100));
+        }
+        
+        bubble.element.style.left = bubble.x + 'px';
+        bubble.element.style.top = bubble.y + 'px';
     });
-    updateUserCount();
-});
-
-socket.on('newMessage', (message) => {
-    state.messages.push(message);
-    createMessageBubble(message);
     
-    if (message.userId !== socket.id) {
-        playNotificationSound();
-    }
-});
-
-socket.on('userJoined', (user) => {
-    state.users.set(user.id, user);
-    updateUserCount();
-    showNotification(`👋 ${user.name} присоединился`, 'success');
-});
-
-socket.on('userLeft', (userId) => {
-    const user = state.users.get(userId);
-    state.users.delete(userId);
-    updateUserCount();
-    if (user) {
-        showNotification(`👋 ${user.name} вышел`, 'info');
-    }
-});
-
-socket.on('userList', (users) => {
-    state.users.clear();
-    users.forEach(user => state.users.set(user.id, user));
-    updateUserCount();
-});
-
-socket.on('userMoodChanged', (data) => {
-    const user = state.users.get(data.userId);
-    if (user) {
-        user.mood = data.mood;
-    }
-});
-
-socket.on('scoreUpdate', (score) => {
-    state.score = score;
-    if (elements.scoreDisplay) {
-        elements.scoreDisplay.textContent = `⚡ ${score}`;
-    }
-});
-
-socket.on('achievementUnlocked', (achievement) => {
-    showNotification(`🏆 Достижение: ${achievement.name}`, 'success');
-    const achievementPopup = document.createElement('div');
-    achievementPopup.className = 'achievement-popup';
-    achievementPopup.innerHTML = `
-        <div class="achievement-icon">🏆</div>
-        <div class="achievement-name">${achievement.name}</div>
-    `;
-    document.body.appendChild(achievementPopup);
-    setTimeout(() => achievementPopup.remove(), 3000);
-});
-
-function updateUserCount() {
-    if (elements.userCount) {
-        elements.userCount.textContent = `👥 ${state.users.size}`;
-    }
+    requestAnimationFrame(animateBubbles);
 }
 
-function playNotificationSound() {
-    // Можно добавить аудиофайл
-}
-
-document.addEventListener('DOMContentLoaded', init);
+// Запуск
+init();
+animateBubbles();
